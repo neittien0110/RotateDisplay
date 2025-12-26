@@ -222,17 +222,14 @@ function SetRotation {
         $result = Set-DisplayRotation -NewOrientation $Rotate -DeviceName $SUB_DISPLAY
 
         $map = @{
-            0 = '0° (DMDO_DEFAULT)'
-            1 = '90° (DMDO_90)'
-            2 = '180° (DMDO_180)'
-            3 = '270° (DMDO_270)'
+            0 = '0* (DMDO_DEFAULT)'
+            1 = '90* (DMDO_90)'
+            2 = '180* (DMDO_180)'
+            3 = '270* (DMDO_270)'
         }
 
       
-        Write-Host (
-            'Da xoay {0}: {1} -> {2} {3}' -f
-            $result.Device, $map[$result.Old], $map[$result.New], $suffix
-        ) -ForegroundColor Green
+        Write-Host ('Rotated {0} from {1} --> {2}' -f $result.Device, $map[$result.Old], $map[$result.New] ) -ForegroundColor Green
     }
     catch {
         Write-Error $_.Exception.Message
@@ -314,7 +311,7 @@ foreach ($d in $displays) {
     }
 }
 
-Write-Host 'Man hinh phu:' $SUB_DISPLAY ' goc ' $SUB_DISPLAY_ORIENTATION -ForegroundColor Blue
+Write-Host 'Secondary display:' $SUB_DISPLAY ' orientation ' $SUB_DISPLAY_ORIENTATION -ForegroundColor Blue
 
 
 if ($Rotate -eq -1) {
