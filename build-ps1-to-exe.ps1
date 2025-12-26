@@ -1,6 +1,14 @@
 # Install this with Administration right.
 # Install-Module -Name PS2EXE -Scope CurrentUser
 
+# Hướng dẫn 
+# Dịch với logo chỉ định
+# .\build-ps1-to-exe.ps1 -IconFile ".\icon.ico"
+# Dịch với logo mặc đinh là file .ico cùng tên với file .ps1
+# .\build-ps1-to-exe.ps1"
+# Chạy không có màn hình console
+# .\build-ps1-to-exe.ps1 -NoConsole"
+
 
 <#
 .SYNOPSIS
@@ -28,15 +36,11 @@ param(
     [string]$IconFile
 )
 
+
 # --- Cau hinh encoding UTF-8 ---
 chcp 65001 | Out-Null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-
-# Ensure that the $Switch is set to false if not provided
-if (-not $PSBoundParameters.ContainsKey('Switch')) {
-    $Switch = $true
-}
 
 function Ensure-PS2EXE {
     Write-Host "Kiem tra module PS2EXE..." -ForegroundColor Cyan
@@ -78,7 +82,7 @@ function Convert-One {
         OutputFile = $OutputExePath
     }
     if ($NoConsole) { $invokeParams.NoConsole = $true }
-    if ($IconFile) { $invokeParams.IconFile = $IconFile }
+    if ($IconFile)  { $invokeParams.IconFile  = $IconFile }
 
     try {
         Invoke-PS2EXE @invokeParams
@@ -99,7 +103,7 @@ function Resolve-OutputPath {
         [string]$Ps1Path
     )
     $relative = Resolve-Path -LiteralPath $Ps1Path | ForEach-Object {
-        $_.Path.Substring($RootDir.Length).TrimStart('\', '/')
+        $_.Path.Substring($RootDir.Length).TrimStart('\','/')
     }
 
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($Ps1Path)
@@ -114,7 +118,7 @@ $root = (Get-Location).Path
 Write-Host "Thu muc goc: $root" -ForegroundColor Cyan
 Write-Host "Thu muc xuat: $OutputDir" -ForegroundColor Cyan
 if ($NoConsole) { Write-Host "Che do NoConsole: BAT" -ForegroundColor Cyan }
-if ($IconFile) { Write-Host "Icon: $IconFile" -ForegroundColor Cyan }
+if ($IconFile)  { Write-Host "Icon mac dinh: $IconFile" -ForegroundColor Cyan }
 
 $logPath = Join-Path $root "build-ps1-to-exe.log"
 Start-Transcript -Path $logPath -Append -ErrorAction SilentlyContinue | Out-Null
@@ -131,7 +135,7 @@ try {
 
     $ps1Files = Get-ChildItem @searchParams
 
-    # Loại bỏ chính bản thân mình
+    # Luon bo qua chinh script nay
     $self = $MyInvocation.MyCommand.Path
     if ($self) {
         $ps1Files = $ps1Files | Where-Object { $_.FullName -ne $self }
@@ -145,8 +149,25 @@ try {
     Write-Host "Tim thay $($ps1Files.Count) file .ps1. Bat dau dong goi..." -ForegroundColor Cyan
 
     foreach ($f in $ps1Files) {
+        # Xac dinh icon tu dong: file cung ten .ico nam cung thu muc
+        $autoIcon = [System.IO.Path]::ChangeExtension($f.FullName, ".ico")
+        $effectiveIcon = $null
+
+        if (Test-Path -LiteralPath $autoIcon) {
+            $effectiveIcon = $autoIcon
+            Write-Host " -> Phat hien icon cung ten: $effectiveIcon" -ForegroundColor DarkCyan
+        }
+        elseif ($IconFile) {
+            $effectiveIcon = $IconFile
+        }
+
         $outExe = Resolve-OutputPath -RootDir $root -OutputDir $OutputDir -Ps1Path $f.FullName
-        Convert-One -InputPs1Path $f.FullName -OutputExePath $outExe -NoConsole:$NoConsole -IconFile $IconFile
+
+        Convert-One `
+            -InputPs1Path $f.FullName `
+            -OutputExePath $outExe `
+            -NoConsole:$NoConsole `
+            -IconFile $effectiveIcon
     }
 
     Write-Host "Hoan tat. Xem ket qua trong: $OutputDir" -ForegroundColor Green
@@ -155,4 +176,3 @@ try {
 finally {
     Stop-Transcript | Out-Null
 }
-
