@@ -1,8 +1,8 @@
 param(
     # Nhận tham số dòng lệnh 0|1|2|3 ứng với 0°|90°|180°|270°
-    [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet(0, 1, 2, 3)]
-    [int]$Rotate
+    [Parameter(Mandatory = $false, Position = 0)]
+    [ValidateSet(-1, 0, 1, 2, 3)]
+    [int]$Rotate = -1
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -233,9 +233,6 @@ function SetRotation {
             'Da xoay {0}: {1} -> {2} {3}' -f
             $result.Device, $map[$result.Old], $map[$result.New], $suffix
         ) -ForegroundColor Green
-
-
-        Write-Host ("Kich thuoc ap dung: {0}x{1}" -f $result.Width, $result.Height)
     }
     catch {
         Write-Error $_.Exception.Message
@@ -272,7 +269,8 @@ function Get-DisplayRotation {
 
         # Map orientation value -> degrees & text
         $deg = if ($ok) {
-            switch ([int]$dm.dmDisplayOrientation) {
+            $orientation = [int]$dm.dmDisplayOrientation            
+            switch ($orientation) {
                 0 { 0 }   # Landscape
                 1 { 90 }  # Portrait
                 2 { 180 } # Landscape flipped
@@ -293,6 +291,7 @@ function Get-DisplayRotation {
             'Primary'  = $s.Primary
             'Vung hien thi'    = "X=$($bounds.X), Y=$($bounds.Y), W=$($bounds.Width), H=$($bounds.Height)"
             'Goc xoay'   = $deg
+            'Orientation'= $orientation
             'Resolution (px)'  = if ($ok) { '{0}x{1}' -f $dm.dmPelsWidth, $dm.dmPelsHeight } else { $null }
             'Tan so (Hz)'      = if ($ok -and $dm.dmDisplayFrequency) { [int]$dm.dmDisplayFrequency } else { $null }
         }
@@ -305,4 +304,20 @@ function Get-DisplayRotation {
 Write-Host 'Danh sach man hinh, Orientation (theo khung) va goc xoay (QDC):' -ForegroundColor Cyan
 $displays= Get-DisplayRotation
 $displays | Format-Table -AutoSize
+
+$SUB_DISPLAY_ORIENTATION = 0
+foreach ($d in $displays) {
+    $SUB_DISPLAY = $d.'GDI Name'
+    $SUB_DISPLAY_ORIENTATION = $d.'Orientation'
+    if (-not $d."Primary") {
+        break
+    }
+}
+
+Write-Host 'Man hinh phu:' $SUB_DISPLAY ' goc ' $SUB_DISPLAY_ORIENTATION -ForegroundColor Blue
+
+
+if ($Rotate -eq -1) {
+    $Rotate = ($SUB_DISPLAY_ORIENTATION + 1) % 4
+}
 SetRotation
