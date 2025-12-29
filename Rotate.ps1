@@ -10,6 +10,7 @@ param(
 # ====== Hằng số: màn hình cần áp dụng (SourceGdiName dạng \\.\DISPLAYx) ======
 # Ví dụ: '\\.\DISPLAY4' hoặc '\\.\DISPLAY1'
 $SUB_DISPLAY = '\\.\DISPLAY4'
+$MAIN_DISPLAY = '\\.\DISPLAY1'
 
 
 $code = @"
@@ -237,6 +238,129 @@ function SetRotation {
     }
 }
 
+#----------------------------------------------------------------------------
+# Vị trí của màn hình 2 so với màn hình 1
+#----------------------------------------------------------------------------
+
+function Get-DisplayRect {
+    param(
+        [Parameter(Mandatory)]
+        [string]$DeviceName
+    )
+    # Lay DEVMODE hien tai
+    $dm = New-Object WinDisp.DEVMODE
+    $dm.dmSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type]'WinDisp.DEVMODE')
+    $ok = [WinDisp.NativeMethods]::EnumDisplaySettings(
+        $DeviceName,
+        [WinDisp.NativeMethods]::ENUM_CURRENT_SETTINGS,
+        [ref]$dm
+    )
+    if (-not $ok) {
+        throw "Khong doc duoc DEVMODE cua $DeviceName"
+    }
+    # Tra ve toa do va kich thuoc hien tai
+    [pscustomobject]@{
+        Device   = $DeviceName
+        X        = [int]$dm.dmPositionX
+        Y        = [int]$dm.dmPositionY
+        Width    = [int]$dm.dmPelsWidth
+        Height   = [int]$dm.dmPelsHeight
+        Orient   = [int]$dm.dmDisplayOrientation
+    }
+}
+
+
+function Set-DisplayPosition {
+    param(
+        [Parameter(Mandatory)]
+        [string]$DeviceName,
+        [Parameter(Mandatory)]
+        [int]$X,
+        [Parameter(Mandatory)]
+        [int]$Y
+    )
+
+    # Lay DEVMODE hien tai
+    $dm = New-Object WinDisp.DEVMODE
+    $dm.dmSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type]'WinDisp.DEVMODE')
+    $ok = [WinDisp.NativeMethods]::EnumDisplaySettings(
+        $DeviceName,
+        [WinDisp.NativeMethods]::ENUM_CURRENT_SETTINGS,
+        [ref]$dm
+    )
+    if (-not $ok) {
+        throw "Khong doc duoc DEVMODE cua $DeviceName"
+    }
+
+    # Cap nhat toa do X/Y (DM_POSITION = 0x20)
+    $DM_POSITION = 0x00000020
+    $dm.dmFields = $DM_POSITION -bor [WinDisp.NativeMethods]::DM_PELSWIDTH -bor [WinDisp.NativeMethods]::DM_PELSHEIGHT
+    $dm.dmPositionX = $X
+    $dm.dmPositionY = $Y
+
+    # Ap dung
+    $rc = [WinDisp.NativeMethods]::ChangeDisplaySettingsEx(
+        $DeviceName,
+        [ref]$dm,
+        [IntPtr]::Zero,
+        [WinDisp.NativeMethods]::CDS_UPDATEREGISTRY,
+        [IntPtr]::Zero
+    )
+
+    if ($rc -ne [WinDisp.NativeMethods]::DISP_CHANGE_SUCCESSFUL) {
+        throw "ChangeDisplaySettingsEx that bai (ma $rc) cho $DeviceName"
+    }
+}
+
+function Set-DisplayPositionByDirection {
+    <#
+    .SYNOPSIS
+      Dat vi tri man hinh theo huong so voi man hinh tham chieu.
+
+    .PARAMETER TargetDisplay
+      Ten thiet bi dang "\\.\DISPLAYx" can di chuyen.
+
+    .PARAMETER ReferenceDisplay
+      Ten thiet bi dang "\\.\DISPLAYx" lam goc tham chieu.
+
+    .PARAMETER Direction
+      Huong: left | right | up | down. Tam thoi hardcode la 'left' neu khong truyen tham so.
+
+    .EXAMPLE
+      Set-DisplayPositionByDirection -TargetDisplay "\\.\DISPLAY2" -ReferenceDisplay "\\.\DISPLAY1" -Direction left
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$TargetDisplay,
+
+        [Parameter(Mandatory)]
+        [string]$ReferenceDisplay,
+
+        [ValidateSet('left','right','up','down')]
+        [string]$Direction = 'left'  # hardcode left by default
+    )
+
+    # Lay thong tin 2 man hinh
+    $ref = Get-DisplayRect -DeviceName $ReferenceDisplay
+    $tar = Get-DisplayRect -DeviceName $TargetDisplay
+
+    # Tinh X,Y moi theo huong
+    $newX = $tar.X
+    $newY = $tar.Y
+
+    switch ($Direction) {
+        'left'  { $newX = $ref.X - $tar.Width;  $newY = $ref.Y - ($ref.Height / 2)}
+        'right' { $newX = $ref.X + $ref.Width;  $newY = $ref.Y - ($ref.Height / 2) }
+        'up'    { $newX = $ref.X ;               $newY = $ref.Y - $tar.Height }
+        'down'  { $newX = $ref.X ;               $newY = $ref.Y + $ref.Height }
+    }
+
+    # Ap dung vi tri moi
+    Set-DisplayPosition -DeviceName $TargetDisplay -X $newX -Y $newY
+
+    Write-Host ("Da dat {0} {1} so voi {2} -> X={3}, Y={4}" -f $TargetDisplay, $Direction, $ReferenceDisplay, $newX, $newY) -ForegroundColor Green
+}
+
 #----------------------------------------------------------------------
 # Lấy thông tin của các màn hình
 #----------------------------------------------------------------------
@@ -304,9 +428,11 @@ $displays | Format-Table -AutoSize
 
 $SUB_DISPLAY_ORIENTATION = 0
 foreach ($d in $displays) {
-    $SUB_DISPLAY = $d.'GDI Name'
-    $SUB_DISPLAY_ORIENTATION = $d.'Orientation'
-    if (-not $d."Primary") {
+    if ($d."Primary") {
+        $MAIN_DISPLAY=$d.'GDI Name'
+    } else {
+        $SUB_DISPLAY = $d.'GDI Name'
+        $SUB_DISPLAY_ORIENTATION = $d.'Orientation'
         break
     }
 }
@@ -318,3 +444,14 @@ if ($Rotate -eq -1) {
     $Rotate = ($SUB_DISPLAY_ORIENTATION + 1) % 4
 }
 SetRotation
+
+# Lấy thông tin vị trí tương đối của màn hình phụ so với màn hình chính
+Get-DisplayRect -DeviceName $SUB_DISPLAY 
+# Thiết lập vị trí tương đối mới
+switch ($Rotate) {
+    0 { $dir = "up" }
+    1 { $dir = "right"}
+    2 { $dir = "up"}
+    3 { $dir = "left"}
+}
+Set-DisplayPositionByDirection -TargetDisplay $SUB_DISPLAY -ReferenceDisplay $MAIN_DISPLAY -Direction $dir
